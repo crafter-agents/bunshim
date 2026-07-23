@@ -1,0 +1,93 @@
+#!/bin/sh
+# bunshim: a `node` that runs on Bun-only machines.
+#
+# Born from three real frictions on a Bun-first box (agent-browser, the vercel
+# CLI, any `#!/usr/bin/env node` shebang) dying with exit 127 because there is
+# no `node` on PATH. This shim translates the node invocations Bun can honor
+# (script files, -e/-p eval, stdin) and fails HONESTLY on the ones it cannot
+# (the REPL, profiling/inspector, exotic V8 flags) instead of silently doing
+# the wrong thing.
+#
+# Install: put this file early on PATH as `node`. Override the bun binary with
+# BUNSHIM_BUN if it is not on PATH.
+
+BUN="${BUNSHIM_BUN:-bun}"
+
+if ! command -v "$BUN" >/dev/null 2>&1; then
+  echo "bunshim: bun not found (looked for '$BUN'; set BUNSHIM_BUN to override)" >&2
+  exit 127
+fi
+
+die() {
+  echo "bunshim: $1" >&2
+  echo "bunshim: this is a node->bun shim; the above is not supported. Run the real node for it." >&2
+  exit 2
+}
+
+# Flags whose whole point is a V8/node capability Bun does not reproduce. We
+# refuse these loudly rather than run and mislead. Match either bare or =value.
+is_unsupported_flag() {
+  case "$1" in
+    --prof|--prof-process|--cpu-prof|--cpu-prof-*|--heap-prof|--heap-prof-*) return 0 ;;
+    --inspect|--inspect=*|--inspect-brk|--inspect-brk=*|--inspect-port*|--debug|--debug-brk) return 0 ;;
+    --experimental-vm-modules|--experimental-loader|--loader|--loader=*) return 0 ;;
+    --stack-size|--stack-size=*|--v8-options|--v8-pool-size*|--max-semi-space-size*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# No args: bun/node behavior diverges. With a pipe we can run stdin; on a TTY
+# node would open the REPL, which this shim does not emulate.
+if [ "$#" -eq 0 ]; then
+  if [ -t 0 ]; then
+    die "no script given and stdin is a TTY (node would open a REPL)"
+  fi
+  exec "$BUN" run -
+fi
+
+case "$1" in
+  -v|--version)
+    # Report the node-compatible version bun advertises (process.version),
+    # so CLIs that gate on a node version see a truthful number.
+    exec "$BUN" -e 'process.stdout.write(process.version + "\n")'
+    ;;
+  -e|--eval)
+    shift
+    [ "$#" -ge 1 ] || die "-e/--eval needs a code argument"
+    exec "$BUN" -e "$@"
+    ;;
+  --eval=*)
+    code="${1#--eval=}"; shift
+    exec "$BUN" -e "$code" "$@"
+    ;;
+  -p|--print)
+    shift
+    [ "$#" -ge 1 ] || die "-p/--print needs a code argument"
+    exec "$BUN" -p "$@"
+    ;;
+  --print=*)
+    code="${1#--print=}"; shift
+    exec "$BUN" -p "$code" "$@"
+    ;;
+  -)
+    exec "$BUN" run -
+    ;;
+  --)
+    shift
+    [ "$#" -ge 1 ] || die "nothing to run after --"
+    exec "$BUN" run "$@"
+    ;;
+  -*)
+    if is_unsupported_flag "$1"; then
+      die "unsupported flag: $1"
+    fi
+    # Unknown but not denylisted node flag sitting before a script. Bun tolerates
+    # a number of these; hand the whole line to `bun run` and let it decide.
+    exec "$BUN" run "$@"
+    ;;
+  *)
+    # The common path: `node script.js [args...]`, including every
+    # `#!/usr/bin/env node` CLI once this shim is `node` on PATH.
+    exec "$BUN" run "$@"
+    ;;
+esac

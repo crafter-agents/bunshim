@@ -1,0 +1,9 @@
+{
+  "name": "bunshim",
+  "version": "0.1.0",
+  "description": "A node executable for Bun-only machines: forwards what Bun can run, fails honestly on what it cannot.",
+  "bin": { "node": "bin/node" },
+  "scripts": { "test": "bun test" },
+  "files": ["bin/node"],
+  "license": "MIT"
+}
