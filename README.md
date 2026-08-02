@@ -69,6 +69,42 @@ spawns a browser, or exercises a Node API that Bun implements differently. The
 shim forwards; it does not make Bun into Node. Untested is untested, and this
 table says only what it measured.
 
+## Runtime behavior: shim versus Bun versus real Node
+
+The table above covers external CLIs. This one covers the shim's own runtime
+semantics: every row is a shim invocation paired with a direct-Bun control run
+on the same machine, compared on exit code, stdout, and stderr. "Real Node"
+values are the documented behavior, not a rerun of actual Node (there is none
+on this machine to run).
+
+**Divergences from real Node.** These are deliberate: bunshim forwards to Bun
+faithfully rather than pretending to be Node, so where Bun itself differs from
+Node, the shim differs too.
+
+| Behavior | Command | Shim / Bun control result | Real Node would |
+|---|---|---|---|
+| `--version` | `node --version` vs `bun --version` | shim prints `v24.3.0` (Node-compatible), Bun prints its own `1.3.0` | print its own Node version, not Bun's |
+| Runtime identity | `node -e 'console.log(process.title, process.argv0, process.execPath)'` | both report Bun's title and executable paths | report `"node"` and a Node executable path |
+| Global `Bun` object | `node -e 'console.log(typeof Bun, typeof process.versions.bun)'` | both expose `"object"` for `Bun` and a string for `process.versions.bun` | have neither |
+| Trailing args with `-e` / `-p` / `-pe` / `-ep` | `node -e 'console.log(process.argv.slice(2))' foo bar` | both consume the first trailing arg into Bun's script-path slot; only `["bar"]` reaches `process.argv.slice(2)` | leave `["foo", "bar"]` in `process.argv.slice(2)` |
+| `NODE_OPTIONS="--require=PATH"` / `--import=PATH` | preload via env var vs `-r PATH` | both silently no-op the env-var form; `-r PATH` on the CLI does preload | preload the named module before the entry script runs, from either form |
+| Unknown `NODE_OPTIONS` flag | `NODE_OPTIONS="--totally-bogus-flag-xyz"` | both accept it silently and run | reject an unrecognized flag at startup |
+
+**Confirmed compatible.** Same paired comparison; shim and Bun control matched
+exactly, and the behavior matches real Node's documented semantics too.
+
+| Behavior | Command |
+|---|---|
+| CommonJS `__dirname`, `__filename`, `module.id` | `node fixture.js` (require of a CJS fixture) |
+| `NODE_PATH` resolution | `NODE_PATH=dir node -e 'require("fixture")'` |
+| `node:`-prefixed built-ins | `node -e 'require("node:path")'`, `require("node:test")` |
+| `require.main === module` | `node fixture.js` |
+| `process.exitCode` assignment | `node -e 'process.exitCode = 7; console.log("before"); console.log("after")'` |
+| Uncaught synchronous exception | `node -e 'throw new Error("x")'` (exit 1, matching stderr) |
+| Unhandled promise rejection | `node -e 'Promise.reject(new Error("x"))'` (exit 1, matching stderr) |
+| Recursive `node` spawn through `PATH` | a script spawning a child `node --version` with the shim's bin dir on `PATH` |
+| Unknown CLI flag passthrough | `node --totally-unknown-flag-xyz -e '...'` |
+
 ## Scope
 
 This is a compatibility shim, not a node reimplementation. It covers the
