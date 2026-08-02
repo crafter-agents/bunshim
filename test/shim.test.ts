@@ -19,6 +19,10 @@ function run(args: string[], input?: string, env?: Record<string, string>) {
 }
 
 describe("bunshim: things bun can run", () => {
+  test("CI RED-RUN DEMO: intentionally fails, remove before merge", () => {
+    expect(1).toBe(2);
+  });
+
   test("--help describes the shim", () => {
     const r = run(["--help"]);
     expect(r.code).toBe(0);
