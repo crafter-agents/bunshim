@@ -15,17 +15,40 @@ thing.
 | `node script.js a b` | `bun run script.js a b` |
 | `node -e "code"` | `bun -e "code"` |
 | `node -p "expr"` | `bun -p "expr"` |
+| `node -pe "expr"` | `bun -p expr` |
+| `node -ep "expr"` | `bun -p expr` |
 | `node --eval=code` | `bun -e code` |
 | `echo code \| node` | `bun run -` |
 | `node --version` | prints `process.version` (node-compatible) |
+| `node -r module script.js` | forwards the preload flag to `bun run` |
+| `node --require=module script.js` | forwards the preload flag to `bun run` |
+| `node --import module script.js` | forwards the preload flag to `bun run` |
+
+## What it ignores
+
+Node heap-sizing flags are accepted and ignored because Bun manages its own
+heap. This applies both to command-line arguments and `NODE_OPTIONS`.
+
+| Accepted forms |
+|---|
+| `--max-old-space-size=SIZE` or `--max-old-space-size SIZE` |
+| `--max-semi-space-size=SIZE` or `--max-semi-space-size SIZE` |
+| `--max-heap-size=SIZE` or `--max-heap-size SIZE` |
 
 ## What it refuses
 
 It exits non-zero with a clear message instead of pretending, for:
 
 - the interactive REPL (`node` with no script on a TTY)
+- syntax-check flags (`-c`, `--check`) because Bun cannot syntax-check without executing
+- the Node test runner (`--test`) because `node:test` and `bun test` have incompatible semantics
 - inspector / profiler flags (`--inspect`, `--prof`, `--cpu-prof`, ...)
 - exotic V8 / loader flags (`--experimental-vm-modules`, `--stack-size`, ...)
+
+The same flags are also refused when passed via `NODE_OPTIONS`.
+`NODE_OPTIONS` syntax-check flags (`-c` and `--check`) refuse just like the CLI path.
+Unsupported flags are detected anywhere before the script name, including
+after a supported preload flag. Flags after the script name remain script arguments.
 
 These are node capabilities Bun does not reproduce. Run the real node for them.
 
