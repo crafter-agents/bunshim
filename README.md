@@ -110,3 +110,8 @@ exactly, and the behavior matches real Node's documented semantics too.
 This is a compatibility shim, not a node reimplementation. It covers the
 invocations a Bun-only machine actually hits when running node-shebang CLIs. If
 your program needs a real node feature, it will tell you rather than guess.
+
+`bin/node` is a `#!/bin/sh` script, so it only runs where a POSIX shell does:
+Linux and macOS. Native Windows has no shebang interpreter, so `bin/node`
+cannot run there at all; CI covers Linux and macOS only for that reason, not
+as an oversight.
