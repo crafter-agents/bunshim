@@ -28,13 +28,235 @@ die() {
 # refuse these loudly rather than run and mislead. Match either bare or =value.
 is_unsupported_flag() {
   case "$1" in
+    --test) return 0 ;;
     --prof|--prof-process|--cpu-prof|--cpu-prof-*|--heap-prof|--heap-prof-*) return 0 ;;
     --inspect|--inspect=*|--inspect-brk|--inspect-brk=*|--inspect-port*|--debug|--debug-brk) return 0 ;;
     --experimental-vm-modules|--experimental-loader|--loader|--loader=*) return 0 ;;
-    --stack-size|--stack-size=*|--v8-options|--v8-pool-size*|--max-semi-space-size*) return 0 ;;
+    --stack-size|--stack-size=*|--v8-options|--v8-pool-size*) return 0 ;;
     *) return 1 ;;
   esac
 }
+
+refuse_unsupported_flag() {
+  if [ "$1" = "--test" ]; then
+    die "node --test uses node:test and is not supported: bun test is a different, incompatible test runner, so this shim does not translate between them"
+  fi
+  die "unsupported flag: $1"
+}
+
+refuse_syntax_check() {
+  die "syntax-check (-c/--check) is not supported: bun run cannot parse-without-executing, and running the script would mislead"
+}
+
+# Inspect every node flag before the script, while treating preload values and
+# eval/print code as values rather than flags. Anything after the script or a
+# bare -- belongs to the invoked program and must remain untouched.
+refuse_unsupported_flags_before_script() {
+  needs_preload_value=0
+
+  for tok in "$@"; do
+    if [ "$needs_preload_value" -eq 1 ]; then
+      needs_preload_value=0
+      continue
+    fi
+
+    case "$tok" in
+      -r|--require|--import)
+        needs_preload_value=1
+        ;;
+      --require=*|--import=*)
+        ;;
+      -e|--eval|--eval=*|-p|--print|--print=*|-pe|-ep|--)
+        return
+        ;;
+      -c|--check|--check=*)
+        refuse_syntax_check
+        ;;
+      -h|--help)
+        echo "bunshim: a node-to-bun shim"
+        echo "Forwards script files, -e/-p eval, and stdin to Bun; refuses node-only features."
+        echo "BUNSHIM_BUN: override the bun executable (default: bun from PATH)."
+        echo "Node heap-sizing flags such as --max-old-space-size are stripped and ignored."
+        echo "Refused: REPL, inspector/debug, profiling, and exotic V8/loader flags."
+        exit 0
+        ;;
+      -v|--version)
+        exec "$BUN" -e 'process.stdout.write(process.version + "\n")'
+        ;;
+      -*)
+        if is_unsupported_flag "$tok"; then
+          refuse_unsupported_flag "$tok"
+        fi
+        ;;
+      *)
+        return
+        ;;
+    esac
+  done
+}
+
+# Node heap sizing does not apply to Bun, which manages its own heap. Accept
+# these common compatibility flags but do not pass them to Bun.
+is_heap_flag() {
+  case "$1" in
+    --max-old-space-size|--max-old-space-size=*|\
+    --max-semi-space-size|--max-semi-space-size=*|\
+    --max-heap-size|--max-heap-size=*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_bare_heap_flag() {
+  case "$1" in
+    --max-old-space-size|--max-semi-space-size|--max-heap-size) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Count the leading argv tokens where Node still interprets its own flags.
+# Preload values remain in that prefix, while a script filename starts the
+# program argv. Eval/print and -- belong to the prefix but end the scan.
+find_node_flag_prefix_length() {
+  node_flag_prefix_length=0
+  needs_preload_value=0
+  needs_heap_value=0
+
+  for tok in "$@"; do
+    if [ "$needs_preload_value" -eq 1 ]; then
+      node_flag_prefix_length=$((node_flag_prefix_length + 1))
+      needs_preload_value=0
+      continue
+    fi
+
+    if [ "$needs_heap_value" -eq 1 ]; then
+      case "$tok" in
+        ''|*[!0-9]*) ;;
+        *)
+          node_flag_prefix_length=$((node_flag_prefix_length + 1))
+          needs_heap_value=0
+          continue
+          ;;
+      esac
+      needs_heap_value=0
+    fi
+
+    case "$tok" in
+      -r|--require|--import)
+        node_flag_prefix_length=$((node_flag_prefix_length + 1))
+        needs_preload_value=1
+        ;;
+      --require=*|--import=*)
+        node_flag_prefix_length=$((node_flag_prefix_length + 1))
+        ;;
+      -e|--eval|--eval=*|-p|--print|--print=*|-pe|-ep|--)
+        node_flag_prefix_length=$((node_flag_prefix_length + 1))
+        return
+        ;;
+      -*)
+        node_flag_prefix_length=$((node_flag_prefix_length + 1))
+        if is_bare_heap_flag "$tok"; then
+          needs_heap_value=1
+        fi
+        ;;
+      *)
+        return
+        ;;
+    esac
+  done
+}
+
+# A leading preload sequence belongs to top-level Bun when it is followed by
+# eval/print. Stop at any other argument so `node -r preload.js script.js -e`
+# remains a script invocation, with `-e` forwarded to that script.
+has_preload_before_eval() {
+  saw_preload=0
+  needs_preload_value=0
+
+  for tok in "$@"; do
+    if [ "$needs_preload_value" -eq 1 ]; then
+      needs_preload_value=0
+      continue
+    fi
+
+    case "$tok" in
+      -r|--require|--import)
+        saw_preload=1
+        needs_preload_value=1
+        ;;
+      --require=*|--import=*)
+        saw_preload=1
+        ;;
+      -e|--eval|--eval=*|-p|--print|--print=*|-pe|-ep)
+        [ "$saw_preload" -eq 1 ]
+        return
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+filtered_node_options=""
+skip_heap_value=0
+for tok in ${NODE_OPTIONS:-}; do
+  if [ "$skip_heap_value" -eq 1 ]; then
+    case "$tok" in
+      ''|*[!0-9]*) ;;
+      *) skip_heap_value=0; continue ;;
+    esac
+    skip_heap_value=0
+  fi
+  case "$tok" in
+    -c|--check|--check=*) refuse_syntax_check ;;
+  esac
+  if is_heap_flag "$tok"; then
+    if is_bare_heap_flag "$tok"; then
+      skip_heap_value=1
+    fi
+    continue
+  fi
+  if is_unsupported_flag "$tok"; then
+    die "unsupported flag in NODE_OPTIONS: $tok"
+  fi
+  filtered_node_options="${filtered_node_options}${filtered_node_options:+ }${tok}"
+done
+NODE_OPTIONS="$filtered_node_options"
+export NODE_OPTIONS
+
+# Rebuild argv without heap flags. The for-loop expands its input list before
+# the first iteration, so clearing and rebuilding "$@" inside it is POSIX-safe.
+find_node_flag_prefix_length "$@"
+first_arg=1
+arg_index=0
+skip_heap_value=0
+for tok in "$@"; do
+  arg_index=$((arg_index + 1))
+  if [ "$first_arg" -eq 1 ]; then
+    set --
+    first_arg=0
+  fi
+  if [ "$skip_heap_value" -eq 1 ]; then
+    case "$tok" in
+      ''|*[!0-9]*) ;;
+      *) skip_heap_value=0; continue ;;
+    esac
+    skip_heap_value=0
+  fi
+  if [ "$arg_index" -gt "$node_flag_prefix_length" ]; then
+    set -- "$@" "$tok"
+    continue
+  fi
+  if is_heap_flag "$tok"; then
+    if is_bare_heap_flag "$tok"; then
+      skip_heap_value=1
+    fi
+    continue
+  fi
+  set -- "$@" "$tok"
+done
 
 # No args: bun/node behavior diverges. With a pipe we can run stdin; on a TTY
 # node would open the REPL, which this shim does not emulate.
@@ -45,7 +267,46 @@ if [ "$#" -eq 0 ]; then
   exec "$BUN" run -
 fi
 
+refuse_unsupported_flags_before_script "$@"
+
+if has_preload_before_eval "$@"; then
+  first_arg=1
+  needs_preload_value=0
+  for tok in "$@"; do
+    if [ "$first_arg" -eq 1 ]; then
+      set --
+      first_arg=0
+    fi
+    if [ "$needs_preload_value" -eq 1 ]; then
+      set -- "$@" "$tok"
+      needs_preload_value=0
+      continue
+    fi
+    case "$tok" in
+      -r|--require|--import)
+        set -- "$@" "$tok"
+        needs_preload_value=1
+        ;;
+      -pe|-ep)
+        set -- "$@" -p
+        ;;
+      *)
+        set -- "$@" "$tok"
+        ;;
+    esac
+  done
+  exec "$BUN" "$@"
+fi
+
 case "$1" in
+  -h|--help)
+    echo "bunshim: a node-to-bun shim"
+    echo "Forwards script files, -e/-p eval, and stdin to Bun; refuses node-only features."
+    echo "BUNSHIM_BUN: override the bun executable (default: bun from PATH)."
+    echo "Node heap-sizing flags such as --max-old-space-size are stripped and ignored."
+    echo "Refused: REPL, inspector/debug, profiling, and exotic V8/loader flags."
+    exit 0
+    ;;
   -v|--version)
     # Report the node-compatible version bun advertises (process.version),
     # so CLIs that gate on a node version see a truthful number.
@@ -65,6 +326,11 @@ case "$1" in
     [ "$#" -ge 1 ] || die "-p/--print needs a code argument"
     exec "$BUN" -p "$@"
     ;;
+  -pe|-ep)
+    shift
+    [ "$#" -ge 1 ] || die "-pe/-ep needs a code argument"
+    exec "$BUN" -p "$@"
+    ;;
   --print=*)
     code="${1#--print=}"; shift
     exec "$BUN" -p "$code" "$@"
@@ -77,9 +343,12 @@ case "$1" in
     [ "$#" -ge 1 ] || die "nothing to run after --"
     exec "$BUN" run "$@"
     ;;
+  -c|--check|--check=*)
+    refuse_syntax_check
+    ;;
   -*)
     if is_unsupported_flag "$1"; then
-      die "unsupported flag: $1"
+      refuse_unsupported_flag "$1"
     fi
     # Unknown but not denylisted node flag sitting before a script. Bun tolerates
     # a number of these; hand the whole line to `bun run` and let it decide.
