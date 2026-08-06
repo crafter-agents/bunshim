@@ -70,8 +70,9 @@ bun test
 
 ## Verified against real CLIs
 
-Claims about a shim are cheap. These were measured on 2026-07-28 against two
-third-party CLIs that ship a `#!/usr/bin/env node` shebang, on a machine with no
+Claims about a shim are cheap. These were measured across 2026-07-28 and
+2026-07-29 against four third-party CLIs: agent-browser, vercel, Clerk, and pnpm.
+Each ships a `#!/usr/bin/env node` shebang and was tested on a machine with no
 `node` installed. Each shim invocation was paired with a direct Bun control run,
 and both were compared on exit code, stdout, and stderr.
 
@@ -82,6 +83,10 @@ and both were compared on exit code, stdout, and stderr.
 | agent-browser 0.32.3 | `doctor --offline --quick --json` | exit 0, 2308 bytes of JSON, byte-for-byte identical |
 | vercel | `--version` | exit 0, version on stdout and banner on stderr, both identical |
 | vercel | `--help` | exit 0, full help on stderr with empty stdout, identical |
+| Clerk 2.0.1-snapshot.9f8329d | `--version` | exit code, stdout, and stderr byte-for-byte identical to control |
+| Clerk 2.0.1-snapshot.9f8329d | `--help` | exit code, 2,133-byte stdout, and stderr byte-for-byte identical to control |
+| pnpm 10.18.3 | `--version` | exit code, stdout, and stderr byte-for-byte identical to control |
+| pnpm 10.18.3 | `--help` | exit code, 3,209-byte stdout, and stderr byte-for-byte identical to control |
 
 Vercel writing help to stderr rather than stdout is its own behavior, faithfully
 forwarded. A shim that "fixed" that would be lying about what the program did.
