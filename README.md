@@ -89,6 +89,8 @@ and both were compared on exit code, stdout, and stderr.
 | pnpm 10.18.3 | `--help` | exit code, 3,209-byte stdout, and stderr byte-for-byte identical to control |
 | gemini-cli 0.25.2 | `--version` | exit 0, stdout and stderr byte-for-byte identical to control |
 | gemini-cli 0.25.2 | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
+| codex-acp | `--version` | exit 2, stdout and stderr byte-for-byte identical to control |
+| codex-acp | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
 
 Vercel writing help to stderr rather than stdout is its own behavior, faithfully
 forwarded. A shim that "fixed" that would be lying about what the program did.
