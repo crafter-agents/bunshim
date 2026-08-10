@@ -91,6 +91,8 @@ and both were compared on exit code, stdout, and stderr.
 | gemini-cli 0.25.2 | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
 | codex-acp | `--version` | exit 2, stdout and stderr byte-for-byte identical to control |
 | codex-acp | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
+| Clerk 2.0.1-snapshot.9f8329d | `completion bash` | exit 0, 1,173-byte stdout identical to control, stderr empty |
+| Clerk 2.0.1-snapshot.9f8329d | `completion zsh` | exit 0, 1,169-byte stdout identical to control, stderr empty |
 
 Vercel writing help to stderr rather than stdout is its own behavior, faithfully
 forwarded. A shim that "fixed" that would be lying about what the program did.
