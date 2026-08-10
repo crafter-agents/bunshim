@@ -70,11 +70,12 @@ bun test
 
 ## Verified against real CLIs
 
-Claims about a shim are cheap. These were measured across 2026-07-28 and
-2026-07-29 against four third-party CLIs: agent-browser, vercel, Clerk, and pnpm.
-Each ships a `#!/usr/bin/env node` shebang and was tested on a machine with no
-`node` installed. Each shim invocation was paired with a direct Bun control run,
-and both were compared on exit code, stdout, and stderr.
+Claims about a shim are cheap. These measurements were recorded on 2026-07-28,
+2026-07-29, and 2026-08-10 across third-party CLI families including
+agent-browser, vercel, Clerk, pnpm, gemini-cli, codex-acp, and TypeScript's tsc.
+Each tested executable uses Node and was tested on a machine with no `node`
+installed. Each shim invocation was paired with a direct Bun control run, and
+both were compared on exit code, stdout, and stderr.
 
 | CLI | Invocation | Result |
 |---|---|---|
@@ -93,6 +94,9 @@ and both were compared on exit code, stdout, and stderr.
 | codex-acp | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
 | Clerk 2.0.1-snapshot.9f8329d | `completion bash` | exit 0, 1,173-byte stdout identical to control, stderr empty |
 | Clerk 2.0.1-snapshot.9f8329d | `completion zsh` | exit 0, 1,169-byte stdout identical to control, stderr empty |
+| pnpm 10.18.3 | `exec node -e '...'` with `node:worker_threads` | exit 0, 53-byte stdout identical to control, stderr empty |
+| TypeScript 5.9.3 tsc | `--version` | exit 0, 14-byte stdout identical to control, stderr empty |
+| TypeScript 5.9.3 tsc | `--noEmit --strict` with a type error | exit 2, 158-byte stdout diagnostic identical to control, stderr empty |
 
 Vercel writing help to stderr rather than stdout is its own behavior, faithfully
 forwarded. A shim that "fixed" that would be lying about what the program did.
