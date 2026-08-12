@@ -105,6 +105,7 @@ both were compared on exit code, stdout, and stderr.
 | semver 7.8.5 | `1.2.3` | exit 0, normalized version on stdout identical to control, stderr empty |
 | ESLint 10.8.1 | `--version` | exit 0, `v10.8.1` on stdout identical to control, stderr empty |
 | ESLint 10.8.1 | `--help` | exit 0, 4,285-byte stdout identical to control, stderr empty |
+| ESLint 10.8.1 | `--no-color sample.js` with a flat config and `eslint-plugin-unicorn` 73.0.0 | exit 1, reported `unicorn/no-new-array`, stdout byte-for-byte identical to control, stderr empty |
 | Prettier 3.9.6 | `--version` | exit 0, `3.9.6` on stdout identical to control, stderr empty |
 | Prettier 3.9.6 | `--write sample.js` formatting a malformed JavaScript file | exit 0, rewrote the file byte-for-byte identically to control, stderr empty |
 
@@ -113,10 +114,11 @@ forwarded. A shim that "fixed" that would be lying about what the program did.
 
 **What this does not establish.** Most invocations above are informational, plus
 one local diagnostic, one registry-backed dependency installation, and one real
-file-formatting operation. Nothing here tests plugins, configuration loading, a
-command that spawns a browser, or a Node API that Bun implements differently.
-The shim forwards; it does not make Bun into Node. Untested is untested, and this
-table says only what it measured.
+file-formatting operation. The ESLint test covers one real third-party plugin and
+one flat config; it does not establish general plugin or configuration
+compatibility. Nothing here tests a command that spawns a browser or a Node API
+that Bun implements differently. The shim forwards; it does not make Bun into
+Node. Untested is untested, and this table says only what it measured.
 
 ## Runtime behavior: shim versus Bun versus real Node
 
