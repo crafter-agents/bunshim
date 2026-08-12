@@ -89,6 +89,7 @@ both were compared on exit code, stdout, and stderr.
 | Clerk 2.0.1-snapshot.9f8329d | `--help` | exit code, 2,133-byte stdout, and stderr byte-for-byte identical to control |
 | pnpm 10.18.3 | `--version` | exit code, stdout, and stderr byte-for-byte identical to control |
 | pnpm 10.18.3 | `--help` | exit code, 3,209-byte stdout, and stderr byte-for-byte identical to control |
+| pnpm 10.18.3 | `add is-odd` through pnpm's registry resolver | exit 0, resolved `is-odd` 3.0.1 identically to control |
 | gemini-cli 0.25.2 | `--version` | exit 0, stdout and stderr byte-for-byte identical to control |
 | gemini-cli 0.25.2 | `--help` | exit 0, stdout and stderr byte-for-byte identical to control |
 | codex-acp | `--version` | exit 2, stdout and stderr byte-for-byte identical to control |
@@ -106,11 +107,11 @@ both were compared on exit code, stdout, and stderr.
 Vercel writing help to stderr rather than stdout is its own behavior, faithfully
 forwarded. A shim that "fixed" that would be lying about what the program did.
 
-**What this does not establish.** Every invocation above is informational, plus
-one local diagnostic. Nothing here tests a command that performs network I/O,
-spawns a browser, or exercises a Node API that Bun implements differently. The
-shim forwards; it does not make Bun into Node. Untested is untested, and this
-table says only what it measured.
+**What this does not establish.** Most invocations above are informational, plus
+one local diagnostic and one registry-backed dependency installation. Nothing
+here tests a command that spawns a browser or exercises a Node API that Bun
+implements differently. The shim forwards; it does not make Bun into Node.
+Untested is untested, and this table says only what it measured.
 
 ## Runtime behavior: shim versus Bun versus real Node
 
